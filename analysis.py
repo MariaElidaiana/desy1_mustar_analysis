@@ -35,7 +35,7 @@ def find_best_fit(args):
     return
 
 def do_mcmc(args):
-    nwalkers, nsteps = 32,5000
+    nwalkers, nsteps = 32, 1500
     runtype = args['runtype']
     bfpath = args['bf_file']
     chainpath = args['chainfile']
@@ -44,41 +44,30 @@ def do_mcmc(args):
     bfmodel = np.loadtxt(bfpath) #Has everything
     start = get_mcmc_start(bfmodel, runtype)
     ndim = len(start) #number of free parameters
-
-    priors = ([1e12, 1e15])
-
-    # Initialize m200, p_cen, B0 and Rs at the center of prior:
-    mid = np.zeros(ndim)
-    for i in range(ndim):
-        mid[i] = (priors[2*i] + priors[2*i + 1])
-    mid *= 0.5
-
-    zeros = np.zeros((ndim, nwalkers))
-    np.random.seed(0)
-    pos=[]
-    for k in range(ndim):
-        zeros[k,:] = mid[k] + 1e-1 * np.random.normal(loc=0.0, scale=np.abs(mid[k]), size=nwalkers)
-
-    for i in range(nwalkers):
-        if runtype=='data':
-            pos.append(np.array([zeros[0,i],zeros[1,i], zeros[2,i],zeros[3,i]]))
-        elif runtype=='cal':
-            pos.append(np.array([zeros[0,i]]))
-
     print 'ndim', ndim
     #pos = [start + 1e-3*np.random.randn(ndim) for k in range(nwalkers)]
-    print 'pos', pos
+    pos = [ np.array(start) * 1.e-1 * abs(np.random.randn((ndim))) for k in range(nwalkers)] # work around
+    '''
+    h0 = 1e-1
+    np.random.seed(0)
+    pos=[]
+    zeros = np.zeros((ndim, nwalkers))
+    for k in range(len(start)):
+        zeros[k,:] = start[k] + h0 * np.random.normal(loc=0.0, scale=np.abs(start[k]), size=nwalkers)
 
-
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnposterior, args=(args,), threads=8)
+    for i in range(nwalkers):
+        pos.append(np.array([zeros[0,i]]))
+    '''
+    print 'Start point for mcmc : ', pos[0]
+    print pos
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnposterior, args=(args,), a=6, threads=8)
     print "Starting MCMC, saving to %s"%chainpath
     sampler.run_mcmc(pos, nsteps)
     print "MCMC complete"
     print "Mean acceptance fraction: %.3f" % (np.mean(sampler.acceptance_fraction))
     np.save(chainpath, sampler.chain)
     np.save(likespath, sampler.lnprobability)
-    #np.savetxt(chainpath, sampler.flatchain)
-    #np.savetxt(likespath, sampler.flatlnprobability)
+    sampler.reset()
     return
 
 

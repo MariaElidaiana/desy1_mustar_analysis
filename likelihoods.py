@@ -13,10 +13,14 @@ from models import *
 def lnlikelihood(theta, args):
     h=args['h']
     z_mean = args['z_mean']
-    DSobs = args['DS']              #physical
-    iDScov = args['icov']           #physical
-    DSmod = DStheo(theta, args)     #comoving
-    DSmod *= h*(1+z_mean)**2        #physical
+    DSobs = args['DS']             #physical [Msun/pc^2]
+    iDScov = args['icov']          #physical [Msun/pc^2]
+
+    DSobs = DSobs*(1+z_mean)**2    #physical [Msun/pc^2] to comoving [Msun/pc^2]
+    iDScov = iDScov*(1+z_mean)**2  #physical [Msun/pc^2] to comoving [Msun/pc^2]
+
+    DSmod = DStheo(theta, args)    #comoving [Msun/pc^2]
+    #DSmod /= (1+z_mean)**2        #physical [Msun/pc^2]
     DSdiff = DSobs - DSmod
     lnlikeDS = -0.5*np.dot(DSdiff, np.dot(iDScov, DSdiff))
     return lnlikeDS

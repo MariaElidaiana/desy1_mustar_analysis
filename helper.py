@@ -15,7 +15,7 @@ from colossus.halo import concentration
 from colossus.cosmology import cosmology
 from scipy.interpolate import interp2d
 
-calpath    = '/Users/maria/current-work/maria_wlcode/Fox_Sims/DeltaSigmas/'
+calpath    = '/Users/maria/current-work/maria_wlcode/Fox_Sims/data_files/'
 y1datapath = '/Users/maria/current-work/lambda_star/connor-data-final/runs_Feb19/DES_mu_star_wlmass/results_v2/'
 samplepath = '/Users/maria/current-work/lambda_star/connor-data-final/runs_Feb19/DES_mu_star_samples/'
 bfpath     = '/Users/maria/current-work/maria_wlcode/Fox_Sims/'
@@ -248,8 +248,8 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
         print "Calibration file: ", dsfile
         calibpath = calpath + dsfile
 
-        R0, ds0 = np.genfromtxt(calibpath, unpack=True) #comoving
-        print 'All data:\n', np.c_[R0,ds0]
+        R0, ds0 = np.genfromtxt(calibpath, unpack=True) #comoving [Mpc/h], [hMsun/pc^2]
+        print 'All data (in comoving [Mpc/h],[hMsun/pc2]):\n', np.c_[R0,ds0]
 
         mubin = dsfile.split('_')[2].split('.')[0][1]
         print "mu_star bin = ", mubin
@@ -275,24 +275,25 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
 
         print "z mean = ", z_mean
 
+        if mubin=='0':
+            fitmask = (R0>=0.3)&(R0<=2.5) #mu1
+        elif mubin=='1':
+            fitmask = (R0>=0.3)&(R0<=3.5) #mu2
+        elif mubin=='2':
+            fitmask = (R0>=0.3)&(R0<=3.5) #mu3
+        elif mubin=='3':
+            fitmask = (R0>=0.3)&(R0<=2.5) #mu4
+
+        R = R0[fitmask]   #physical [Mpc]
+        ds = ds0[fitmask] #physical [Msun/pc^2]
+
         #The simulations are in comoving distances.
         #I need to convert radius and deltasigma from comoving to physical.
         h=cosmology['h']
-        R0 = R0/h*(1+z_mean)       #comoving to physical
-        ds0 = ds0*h*(1+z_mean)**2  #comoving to physical
+        R0 = R0/h*(1+z_mean)       #comoving [Mpc/h] to physical [Mpc]
+        ds0 = ds0/h*(1+z_mean)**2  #comoving [hMsun/pc^2] to physical [Msun/pc^2]
 
-        if mubin=='0':
-            fitmask = (R0>=0.3)&(R0<=2.5)                #mu1
-        elif mubin=='1':
-            fitmask = (R0>=0.3)&(R0<=2.8617856063833296) #mu2
-        elif mubin=='2':
-            fitmask = (R0>=0.3)&(R0<=3.149802624737183)  #mu3
-        elif mubin=='3':
-            fitmask = (R0>=0.3)&(R0<=3.502549163319234)  #mu4
-
-        R = R0[fitmask]   #physical
-        ds = ds0[fitmask] #physical
-        print 'Sim-data after radial cut for the mcmc:\n', np.c_[R, ds]
+        print 'Sim-data after radial cut (in physical [Mpc],[Msun/pc2]) for the mcmc:\n', np.c_[R, ds]
 
         #The simulations don't have errors. The covariances for the simulated
         #data have to be the data covariances. That's why I getting them here.
@@ -302,14 +303,16 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
         cov = np.genfromtxt(covpath)
 
         cov = cov[fitmask]
-        cov = cov[:,fitmask]
-        print 'Data after radial cut for the mcmc:\n', np.c_[R, ds]
+        #The data cov is in units of physical [hMsun/pc^2]^2
+        #Have to multiply by h to be in units of physical [Msun/pc^2]^2
+        cov = cov[:,fitmask]*h
+
         #Apply the Hartlap correction, to get an unbiased cov matrix estimator.
         #It boosts the covariance values.
         Njk = 100.
         D = len(R)
-        cov = cov*((Njk-1.)/(Njk-D-2))  #physical
-        icov = np.linalg.inv(cov)       #physical
+        cov = cov*((Njk-1.)/(Njk-D-2))  #physical [Msun/pc^2]^2
+        icov = np.linalg.inv(cov)       #physical [Msun/pc^2]^2
 
     return R, ds, icov, cov, fitmask
 
@@ -326,7 +329,7 @@ def get_mcmc_start(model, runtype):
 
 def get_model_defaults(h):
     #Dictionary of default starting points for the best fit
-    defaults = {'m200': 0.9e14, #m200 is in Msun/h
+    defaults = {'m200': 1e14, #m200 is in Msun/h
                 'pcc' : 0.75,
                 'B0'  : 0.10,
                 'Rs'  : 2.50} #Mpc/h physical

@@ -37,22 +37,22 @@ def DStheo(theta, args):
     """
     m200    = theta
     h       = args['h']
-    R       = args['R']
+    R       = args['R'] #in physical physical [Mpc]
     cosmo   = args['cosmo']
     z_mean  = args['z_mean']
     runtype = args['runtype']
     conc_spline = args['cspline']
 
     #On data, using Duffy2008 concentration-mass relation:
-    #func = mass_concentration.duffy_concentration
-    #nfw = NFW(m200, func(m200, z_mean, cosmo), z_mean, cosmology=cosmo)
+    func = mass_concentration.duffy_concentration
+    nfw = NFW(m200, func(m200, z_mean, cosmo), z_mean, cosmology=cosmo, overdensity_type='critical')
 
     #Now, on data and sim, using Diemer2015 concentartion-mass relation:
     #Have to fix the data cosmology part.
-    c200=conc_spline(m200, z_mean)
-    nfw = NFW(m200, c200, z_mean, cosmology=cosmo)
+    #c200=conc_spline(m200, z_mean)
+    #nfw = NFW(m200, c200, z_mean, cosmology=cosmo, overdensity_type='mean')
 
-    #Now, on data and sim, R has to be converted from physical to comoving
+    #Now, on data and sim, R has to be converted from physical [Mpc] to comoving [Mpc]
     if runtype=='data' or runtype=='cal':
-        ds  = nfw.delta_sigma(R*h*(1+z_mean)).value
-    return ds #comoving
+        ds  = nfw.delta_sigma(R*(1+z_mean)).value #in units of comoving [M_sun/Mpc^2]
+    return ds/1.e12 #comoving [M_sun/pc^2]
