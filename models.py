@@ -1,8 +1,8 @@
 #!/bin/env python
 """
-.. module:: plot_output
+.. module:: models
 :synopsis: Computes the :math:`\Delta\Sigma_{NFW}` profile in units of
-           :math:`[h*M_{\odot}/pc^2]` comoving.
+           :math:`[M_{\odot}/pc^2]` physical.
 .. moduleauthor:: Maria Elidaiana <mariaeli@brandeis.edu>
 """
 
@@ -35,9 +35,9 @@ def DStheo(theta, args):
     as a function of the mass. See: https://github.com/joergdietrich/NFW for
     more details on the NFW function.
     """
-    m200    = theta
+    m200    = theta     # in physical M200c [Msun]
     h       = args['h']
-    R       = args['R'] #in physical physical [Mpc]
+    R       = args['R'] # in physical [Mpc]
     cosmo   = args['cosmo']
     z_mean  = args['z_mean']
     runtype = args['runtype']
@@ -52,7 +52,7 @@ def DStheo(theta, args):
     #c200=conc_spline(m200, z_mean)
     #nfw = NFW(m200, c200, z_mean, cosmology=cosmo, overdensity_type='mean')
 
-    #Now, on data and sim, R has to be converted from physical [Mpc] to comoving [Mpc]
+    #For DeltaSigma calculation, data and sim, the radius has to be in physical [Mpc]
     if runtype=='data' or runtype=='cal':
-        ds  = nfw.delta_sigma(R*(1+z_mean)).value #in units of comoving [M_sun/Mpc^2]
-    return ds/1.e12 #comoving [M_sun/pc^2]
+        ds  = nfw.delta_sigma(R).value #DeltaSigma is in units of physical [M_sun/Mpc^2]
+    return ds/1.e12 #physical [M_sun/pc^2]

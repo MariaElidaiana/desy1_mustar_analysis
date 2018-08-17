@@ -1,6 +1,6 @@
 #!/bin/env python
 """
-.. module:: plot_output
+.. module:: helper
 :synopsis: Script to get paths and load data for the mcmc analysis.
 .. moduleauthor:: Maria Elidaiana <mariaeli@brandeis.edu>
 """
@@ -94,7 +94,7 @@ def get_args(dsfile, dscovfile, samplefile, binrun, runtype):
 
         if zbinstr=='z3':
             zbin='zlow'
-            z_mean = 0.215
+            z_mean = 0.0 #0.215
             if mbin=='m0':
                 mean_mbin=m0[3]
             if mbin=='m1':
@@ -105,7 +105,7 @@ def get_args(dsfile, dscovfile, samplefile, binrun, runtype):
                 mean_mbin=m3[3]
         if zbinstr=='z2':
             zbin='zmid'
-            z_mean = 0.415
+            z_mean = 0.25 #0.415
             if mbin=='m0':
                 mean_mbin=m0[2]
             if mbin=='m1':
@@ -114,10 +114,9 @@ def get_args(dsfile, dscovfile, samplefile, binrun, runtype):
                 mean_mbin=m2[2]
             if mbin=='m3':
                 mean_mbin=m3[2]
-
         if zbinstr=='z1':
             zbin='zhigh'
-            z_mean = 0.575
+            z_mean = 0.5 #0.575
             if mbin=='m0':
                 mean_mbin=m0[1]
             if mbin=='m1':
@@ -126,11 +125,9 @@ def get_args(dsfile, dscovfile, samplefile, binrun, runtype):
                 mean_mbin=m2[1]
             if mbin=='m3':
                 mean_mbin=m3[1]
-
         if zbinstr=='z0':
             zbin='zhigh2'
-            z_mean = 0.575
-
+            z_mean = 1.0 #0.575
             if mbin=='m0':
                 mean_mbin=m0[0]
             if mbin=='m1':
@@ -259,18 +256,18 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
         if zbinstr=='z3':
             zbin='zlow'
             covzbin = '0'
-            z_mean = 0.215
+            z_mean = 0.0 #0.215
         if zbinstr=='z2':
             zbin='zmid'
-            z_mean = 0.415
+            z_mean = 0.25 #0.415
             covzbin = '1'
         if zbinstr=='z1':
             zbin='zhigh'
-            z_mean = 0.575
+            z_mean = 0.5 #0.575
             covzbin = '2'
         if zbinstr=='z0':
             zbin='zhigh2'
-            z_mean = 0.575
+            z_mean = 1.0 #0.575
             covzbin = '2'
 
         print "z mean = ", z_mean
@@ -284,14 +281,14 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
         elif mubin=='3':
             fitmask = (R0>=0.3)&(R0<=2.5) #mu4
 
-        R = R0[fitmask]   #physical [Mpc]
-        ds = ds0[fitmask] #physical [Msun/pc^2]
+        R = R0[fitmask]   ##comoving [Mpc/h]      # not physical [Mpc]!
+        ds = ds0[fitmask] ##comoving [hMsun/pc^2] # not physical [Msun/pc^2]!
 
         #The simulations are in comoving distances.
         #I need to convert radius and deltasigma from comoving to physical.
-        h=cosmology['h']
-        R0 = R0/h*(1+z_mean)       #comoving [Mpc/h] to physical [Mpc]
-        ds0 = ds0/h*(1+z_mean)**2  #comoving [hMsun/pc^2] to physical [Msun/pc^2]
+        h = cosmology['h']
+        R /= h*(1.+z_mean)       #comoving [Mpc/h] to physical [Mpc]
+        ds *= h*(1.+z_mean)**2  #comoving [hMsun/pc^2] to physical [Msun/pc^2]
 
         print 'Sim-data after radial cut (in physical [Mpc],[Msun/pc2]) for the mcmc:\n', np.c_[R, ds]
 
@@ -313,6 +310,11 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
         D = len(R)
         cov = cov*((Njk-1.)/(Njk-D-2))  #physical [Msun/pc^2]^2
         icov = np.linalg.inv(cov)       #physical [Msun/pc^2]^2
+
+        #print '----- sqrt (Covariance) -----', '\n', np.sqrt(cov)
+        #dcov = np.sqrt(cov.diagonal())
+        #print '------ sqrt(Diagonal) -----', '\n', dcov
+
 
     return R, ds, icov, cov, fitmask
 

@@ -1,6 +1,6 @@
 #!/bin/env python
 """
-.. module:: plot_output
+.. module:: analysis
 :synopsis: Script to run the mcmc analysis on data and Fox simulations.
 .. moduleauthor:: Maria Elidaiana <mariaeli@brandeis.edu>
 """
@@ -58,8 +58,8 @@ def do_mcmc(args):
     for i in range(nwalkers):
         pos.append(np.array([zeros[0,i]]))
     '''
-    print 'Start point for mcmc : ', pos[0]
-    print pos
+    print 'Start points for mcmc : ', pos#[0]
+    #print pos
     sampler = emcee.EnsembleSampler(nwalkers, ndim, lnposterior, args=(args,), a=6, threads=8)
     print "Starting MCMC, saving to %s"%chainpath
     sampler.run_mcmc(pos, nsteps)

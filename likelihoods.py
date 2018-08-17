@@ -1,7 +1,7 @@
 #!/bin/env python
 """
-.. module:: plot_output
-:synopsis: Likelihood for the mcmc.
+.. module:: likelihoods
+:synopsis: Likelihoods for the mcmc.
 .. moduleauthor:: Maria Elidaiana <mariaeli@brandeis.edu>
 """
 
@@ -16,13 +16,18 @@ def lnlikelihood(theta, args):
     DSobs = args['DS']             #physical [Msun/pc^2]
     iDScov = args['icov']          #physical [Msun/pc^2]
 
-    DSobs = DSobs*(1+z_mean)**2    #physical [Msun/pc^2] to comoving [Msun/pc^2]
-    iDScov = iDScov*(1+z_mean)**2  #physical [Msun/pc^2] to comoving [Msun/pc^2]
+    #cov = args['cov']
+    #DSerr = np.sqrt(cov.diagonal())
+    #DSerr = DSobs/5.
 
-    DSmod = DStheo(theta, args)    #comoving [Msun/pc^2]
-    #DSmod /= (1+z_mean)**2        #physical [Msun/pc^2]
-    DSdiff = DSobs - DSmod
+    DSmod = DStheo(theta, args)  #physical [Msun/pc^2]
+    DSdiff = DSobs - DSmod       #physical [Msun/pc^2]
+    iDScov = iDScov              #physical [Msun/pc^2]
+
+    #print 'DSobs, DSmod in physical [Msun/pc^2] =============> ', DSobs/h, DSmod/h,'\n'
+
     lnlikeDS = -0.5*np.dot(DSdiff, np.dot(iDScov, DSdiff))
+    #lnlikeDS = -0.5*np.sum((DSdiff )**2/(DSerr**2))
     return lnlikeDS
 
 #prior
@@ -33,7 +38,7 @@ def lnprior(theta, args):
     elif runtype=='cal':
         m200 = theta
 
-    if (m200<1e12)|(m200>1e15):
+    if (m200<1e12)|(m200>1e15): #m200 is M200c [Msun] physical
         lnprior_m200 = -np.inf
     else:
         lnprior_m200 = 0.0
