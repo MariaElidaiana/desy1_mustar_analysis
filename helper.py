@@ -19,8 +19,9 @@ calpath    = '/Users/maria/current-work/maria_wlcode/Fox_Sims/data_files/'
 y1datapath = '/Users/maria/current-work/lambda_star/connor-data-final/runs_Feb19/DES_mu_star_wlmass/results_v2/'
 samplepath = '/Users/maria/current-work/lambda_star/connor-data-final/runs_Feb19/DES_mu_star_samples/'
 bfpath     = '/Users/maria/current-work/maria_wlcode/Fox_Sims/'
+zbiaspath  = '/Users/maria/current-work/maria_wlcode/Fox_Sims/maria_z_files/'
 
-def get_args(dsfile, dscovfile, samplefile, binrun, runtype):
+def get_args(dsfile, dscovfile, samplefile, bfile, bcovfile, binrun, zmubins, runtype):
     """
     Pack as a dictionary the :math:`\Delta\Sigma` data and other relevant quantities
     for the computation of the theoretical :math:`\Delta\Sigma_{NFW}`.
@@ -62,6 +63,11 @@ def get_args(dsfile, dscovfile, samplefile, binrun, runtype):
         mustar = np.array(sample['MU'])
         mean_mbin = np.mean(mustar)*1e10 #fixing the mu_star units
 
+        Am_prior, Am_prior_var = get_Am_prior(zmubins[0], zmubins[1])
+        Sigma_crit_inv = get_sigma_crit_inv(zmubins[0], zmubins[1])
+
+        print 'Sigma_inv = ', Sigma_crit_inv
+
         print 'p_cen_star_mean', p_mu
         print 'p_cen_star_sigma', p_sigma
         print 'mustar_mean', mean_mbin
@@ -69,16 +75,22 @@ def get_args(dsfile, dscovfile, samplefile, binrun, runtype):
         zbin = samplefile.split('_')[9]
         mbin = samplefile.split('_')[10].replace('.fits','')
         print zbin, mbin
-        R, ds, icov, cov, fitmask = get_data_and_icov(dsfile, dscovfile, runtype)
 
-        results_dir = bfpath + 'fitting_'+ dsfile.split('_')[0] + '_' + zbin + '_'+ mbin
+        R, ds, icov, cov, fitmask = get_data_and_icov(dsfile, dscovfile, runtype)
+        Rb, Bp1, iBcov, Bcov = get_boost_data_and_cov(bfile, bcovfile, runtype)
+
+        results_dir = bfpath + 'fitting_'+ dsfile.split('_')[0] + '_' + zbin + '_'+ mbin +'/'
+
+        print '=====>', results_dir
 
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
 
-        bf_file = results_dir + 'bf_' + dsfile.split('_')[0] + '_' + zbin + '_'+ mbin +'.txt'
-        chainfile = results_dir + 'chain_' + dsfile.split('_')[0] + '_' + zbin + '_'+ mbin #+'.txt'
-        likesfile = results_dir + 'like_' + dsfile.split('_')[0] + '_' + zbin + '_'+ mbin #+'.txt'
+        bf_file = results_dir + 'bf_' + dsfile.split('_')[0]+ '_' + zbin + '_'+ mbin +'.txt'
+        chainfile = results_dir + 'chain_' + dsfile.split('_')[0] + '_' + zbin + '_'+ mbin +'.txt'
+        likesfile = results_dir + 'like_' + dsfile.split('_')[0]  +'_' + zbin + '_'+ mbin #+'.txt'
+
+        print '==== bf_file', bf_file, '\n', chainfile, '\n', likesfile
 
     elif runtype=='cal':
         h=cosmology['h']
@@ -145,6 +157,9 @@ def get_args(dsfile, dscovfile, samplefile, binrun, runtype):
         p_mu = None
         p_sigma = None
         R, ds, icov, cov, fitmask = get_data_and_icov(dsfile, dscovfile, runtype)
+        Rb, Bp1, iBcov, Bcov = [],[],[],[]
+
+        Am_prior, Am_prior_var = [],[]
 
         results_dir = bfpath + 'fitting_'+ dsfile.split('_')[0] + '_' + zbin + '_'+ mbin +'/'
 
@@ -155,13 +170,15 @@ def get_args(dsfile, dscovfile, samplefile, binrun, runtype):
         chainfile = results_dir + 'chain_'  + zbin + '_'+ mbin #+'.txt'
         likesfile = results_dir + 'like_' + zbin + '_'+ mbin #+'.txt'
 
-    conc_spline = get_concentration_spline(runtype)
+    #conc_spline = get_concentration_spline(runtype) #not working for data
 
     args = {"h":h, "cosmo":cosmo, "z_mean":z_mean, "runtype":runtype,
             "p_cen_star_mu":p_mu, "p_cen_star_sigma":p_sigma, "zbin":zbin,
             "mbin":mbin, "R":R, "DS":ds, "icov":icov, "cov":cov, "bf_file":bf_file,
             "chainfile":chainfile, "likesfile":likesfile, "mean_mustar":mean_mbin,
-            "cspline":conc_spline}
+            "Rb":Rb, "Bp1":Bp1, "Bcov":Bcov, "iBcov":iBcov, "Am_prior":Am_prior,
+            "Am_prior_var":Am_prior_var, "Sigma_crit_inv":Sigma_crit_inv}
+            #"cspline":conc_spline, "Rb":Rb, "Bp1":Bp1, "Bcov":Bcov, "iBcov":iBcov}
 
     return args
 
@@ -200,6 +217,7 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
     cosmology = get_cosmo_default(runtype)
     if runtype=='data':
         h=cosmology['h']
+        print "Using h = ", h
         print "Y1 data file: ", dsfile
         datapath = y1datapath + dsfile
         R0, DSobs0, DSerr0, dsx, dsxe = np.genfromtxt(datapath, unpack=True)
@@ -221,24 +239,24 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
         #In Simet et al. the units are in physical. So, for the simulation data,
         #maybe I should convert this radial scale limits to comoving (?).
         if mubin=='0':
-            fitmask = (R0>=0.3)&(R0<=2.5)                #mu1
+            fitmask = (R0>=0.2)&(R0<=2.5) #mu1
         elif mubin=='1':
-            fitmask = (R0>=0.3)&(R0<=2.8617856063833296) #mu2
+            fitmask = (R0>=0.2)&(R0<=2.5) #mu2
         elif mubin=='2':
-            fitmask = (R0>=0.3)&(R0<=3.149802624737183)  #mu3
+            fitmask = (R0>=0.2)&(R0<=2.5) #mu3
         elif mubin=='3':
-            fitmask = (R0>=0.3)&(R0<=3.502549163319234)  #mu4
+            fitmask = (R0>=0.2)&(R0<=2.5) #mu4
 
-        R = R0[fitmask]      #physical
-        ds = DSobs0[fitmask] #physical
-        cov = cov[fitmask]
+        R = R0[fitmask]/h      #physical [Mpc]
+        ds = DSobs0[fitmask]*h #physical [Msun/pc^2]
+        cov = cov[fitmask]*h
         cov = cov[:,fitmask]
         print 'Data after radial cut for the mcmc:\n', np.c_[R, ds]
         #Apply the Hartlap correction, to get an unbiased cov matrix estimator.
         #It boosts the covariance values.
         Njk = 100.
         D = len(R)
-        cov = cov*((Njk-1.)/(Njk-D-2)) #physical
+        cov = cov*((Njk-1.)/(Njk-D-2)) #physical [Msun/pc^2]
         icov = np.linalg.inv(cov)      #physical
 
     elif runtype=='cal':
@@ -273,13 +291,13 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
         print "z mean = ", z_mean
 
         if mubin=='0':
-            fitmask = (R0>=0.3)&(R0<=2.5) #mu1
+            fitmask = (R0>=0.2)&(R0<=2.5) #mu1
         elif mubin=='1':
-            fitmask = (R0>=0.3)&(R0<=3.5) #mu2
+            fitmask = (R0>=0.2)&(R0<=2.5) #mu2
         elif mubin=='2':
-            fitmask = (R0>=0.3)&(R0<=3.5) #mu3
+            fitmask = (R0>=0.2)&(R0<=2.5) #mu3
         elif mubin=='3':
-            fitmask = (R0>=0.3)&(R0<=2.5) #mu4
+            fitmask = (R0>=0.2)&(R0<=2.5) #mu4
 
         R = R0[fitmask]   ##comoving [Mpc/h]      # not physical [Mpc]!
         ds = ds0[fitmask] ##comoving [hMsun/pc^2] # not physical [Msun/pc^2]!
@@ -318,12 +336,53 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
 
     return R, ds, icov, cov, fitmask
 
+def get_boost_data_and_cov(Bfile, Bcovfile, runtype):
+    cosmology = get_cosmo_default(runtype)
+    if runtype=='data':
+        h=cosmology['h']
+        print "Using h = ", h
+        print "Y1 boost-factor data file: ", Bfile
+
+        #Boost-factors files
+        Bdatapath = y1datapath + Bfile
+        Rb, Bp1, Be = np.genfromtxt(Bdatapath, unpack=True)
+
+        # Boost-factors Covariances
+        Bcovpath = y1datapath + Bcovfile
+        Bcov = np.loadtxt(Bcovpath)
+
+        Becut = Be > 1e-6
+
+        Bp1 = Bp1[Becut]
+        Rb  = Rb[Becut]/h # physical [Mpc]
+        Be  = Be[Becut]
+        Bcov = Bcov[Becut]
+        Bcov = Bcov[:,Becut]
+
+        indices = (Rb > 0.2)*(Rb < 999.)
+        Bp1 = Bp1[indices]
+        Rb  = Rb[indices]
+        Be  = Be[indices]
+        Bcov = Bcov[indices]
+        Bcov = Bcov[:,indices]
+        Njk = 100.
+        D = len(Rb)
+        Bcov = Bcov*((Njk-1.)/(Njk-D-2))
+        iBcov = np.linalg.inv(Bcov)
+        print "Boost data shapes: ",Rb.shape, Bp1.shape, Be.shape, Bcov.shape
+    return Rb, Bp1, iBcov, Bcov
+
+
 def get_mcmc_start(model, runtype):
 
     params = []
     if runtype=="data":
-        m200, pcc, b0, rs  = model
-        params.append(m200, pcc, b0, rs)
+        m200, pcc, Am, B0, Rs  = model
+        params.append(m200)
+        params.append(pcc)
+        params.append(Am)
+        params.append(B0)
+        params.append(Rs)
     elif runtype=="cal":
         m200 = model
         params.append(m200)
@@ -333,6 +392,7 @@ def get_model_defaults(h):
     #Dictionary of default starting points for the best fit
     defaults = {'m200': 1e14, #m200 is in Msun/h
                 'pcc' : 0.75,
+                'Am' : 1.02, #Y1 approx.
                 'B0'  : 0.10,
                 'Rs'  : 2.50} #Mpc/h physical
     return defaults
@@ -346,6 +406,7 @@ def get_model_start(runtype, mean_mustar, h):
     if runtype == "data":
         guess = [m200_guess,
                  defaults['pcc'],
+                 defaults['Am'],
                  defaults['B0'],
                  defaults['Rs']]
     elif runtype == "cal":
@@ -361,8 +422,8 @@ def get_cosmo_default(runtype):
                  'ode'    : 0.7,
                  'ob'     : 0.0, #Have to fix: this cosmology doens't work
                  'ok'     : 0.0, #for Diemer 2015!
-                 'sigma8' : 0.0,
-                 'ns'     : 0.0,
+                 'sigma8' : 0.835,
+                 'ns'     : 0.962,
                  'de_model' : 'lambda'}
 
     elif runtype=='cal':
@@ -398,3 +459,20 @@ def get_concentration_spline(runtype):
         for j in range(N):
             c_array[j,i] = concentration.concentration(M[i],'200c',z=z[j],model='diemer15')
     return interp2d(M, z, c_array)
+
+
+def get_Am_prior(zi, lj):
+    #Photoz calibration (1+delta)
+    deltap1 = np.loadtxt(zbiaspath + "Y1_deltap1_maria.txt")[zi, lj]
+    deltap1_var = np.loadtxt(zbiaspath + "Y1_deltap1_var_maria.txt")[zi, lj]
+    #Shear calibration m
+    m = 0.012
+    m_var = 0.013**2
+    Am_prior = deltap1 + m
+    Am_prior_var = deltap1_var + m_var
+    print "Am prior: ", zi, lj, Am_prior, np.sqrt(Am_prior_var)
+    return Am_prior, Am_prior_var
+
+def get_sigma_crit_inv(zi, lj):
+    sigma_crit_inv = np.loadtxt(zbiaspath + "sigma_inv_maria.txt")[zi, lj] #in physical [pc^2 / M_\odot]
+    return sigma_crit_inv
