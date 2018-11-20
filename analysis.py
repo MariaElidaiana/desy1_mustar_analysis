@@ -14,8 +14,6 @@ from likelihoods import *
 import scipy.optimize as op
 import emcee
 import pickle
-from emcee.utils import MPIPool
-
 
 def do_model(theta, args):
     DSnfw = DStheo(theta, args)
@@ -70,8 +68,8 @@ def make_blind(M, M_min, M_max, outpath):
 def make_blind_chain(chain, chainpath, blindpath):
     samples = chain.reshape((-1, chain.shape[2])) #flatten the chain
     #Apply blinding
-    samples[:, 0] = make_blind(samples[:, 0], 1.e12, 1.e15, blindpath)
-    nwalkers, nsteps = 50, 125 #32, 1500
+    samples[:, 0] = make_blind(samples[:, 0], 1.e11, 1.e18, blindpath)
+    nwalkers, nsteps = 32, 10000
     ndim = chain.shape[2]
     samples = chain.reshape((nwalkers, nsteps, ndim)) #Back to original chain shape
     #Saving blind chains
@@ -80,7 +78,7 @@ def make_blind_chain(chain, chainpath, blindpath):
     np.save(blind_chainpath, samples)
 
 def do_mcmc(args, blind):
-    nwalkers, nsteps = 50, 125 #32, 1500
+    nwalkers, nsteps = 32, 10000 
     runtype = args['runtype']
     bfpath = args['bf_file']
     chainpath = args['chainfile']
@@ -106,20 +104,8 @@ def do_mcmc(args, blind):
     for i in range(nwalkers):
         pos.append(np.array([zeros[0,i]]))
     '''
-    #print 'Start points for mcmc : ', pos#[0]
-    #print pos
 
-    #pool = MPIPool()
-    #if not pool.is_master():
-    #    pool.wait()
-    #    sys.exit(0)
-
-    pool = MPIPool()
-    if not pool.is_master():
-        pool.wait()
-        sys.exit(0)
-
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnposterior, args=(args,), a=6, pool=pool) #threads=8,
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnposterior, args=(args,), a=2, threads=28)
     if blind:
         print "Starting MCMC, saving to %s"%chainpath.replace('.txt', '.npy').replace('chain_', 'blinded_chain_')
     else:
@@ -131,8 +117,8 @@ def do_mcmc(args, blind):
     if blind:
         print 'Saving the blinded chains...'
         chain = sampler.chain
-        blindpath = '/Users/maria/current-work/maria_wlcode/Fox_Sims/ProfileFitting/blinding_file.p'
-        #chainpath.replace('.txt', '.p').replace('chain_', 'blinding_file_')
+        #blindpath = '/Users/maria/current-work/maria_wlcode/Fox_Sims/ProfileFitting/blinding_file.p'
+        blindpath = '/data/des61.a/data/mariaeli/y1_wlfitting/ProfileFitting/blinding_file.p'
         make_blind_chain(chain, chainpath, blindpath)
     else:
         print 'Saving chains...'
@@ -141,7 +127,6 @@ def do_mcmc(args, blind):
     print 'Like path = ', likespath#.replace('.txt','')
     np.save(likespath, sampler.lnprobability)
     sampler.reset()
-    pool.close()
     return
 
 
@@ -149,7 +134,7 @@ if __name__ == "__main__":
 
     runtype = sys.argv[1]
     binrun  = int(sys.argv[2])
-
+    svdir= '_final' #'_v2'
     blind = True
 
     dsfiles   = []
@@ -196,11 +181,9 @@ if __name__ == "__main__":
 
     print dsfiles[binrun], '\n', dscovfiles[binrun], '\n', bfiles[binrun], '\n', bcovfiles[binrun]
 
-    print '=== zmubins :', zmubins[binrun]
-
     #Get args and quantities
     start = time.time()
-    args = get_args(dsfiles[binrun], dscovfiles[binrun], sampfiles[binrun], bfiles[binrun], bcovfiles[binrun], binrun, zmubins[binrun], runtype)
+    args = get_args(dsfiles[binrun], dscovfiles[binrun], sampfiles[binrun], bfiles[binrun], bcovfiles[binrun], binrun, zmubins[binrun], runtype, svdir)
     end = time.time()
     print 'Time to run get_args:', end - start, 'seconds'
 

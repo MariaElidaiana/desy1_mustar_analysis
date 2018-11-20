@@ -15,13 +15,20 @@ from colossus.halo import concentration
 from colossus.cosmology import cosmology
 from scipy.interpolate import interp2d
 
-calpath    = '/Users/maria/current-work/maria_wlcode/Fox_Sims/data_files/'
-y1datapath = '/Users/maria/current-work/lambda_star/connor-data-final/runs_Feb19/DES_mu_star_wlmass/results_v2/'
-samplepath = '/Users/maria/current-work/lambda_star/connor-data-final/runs_Feb19/DES_mu_star_samples/'
-bfpath     = '/Users/maria/current-work/maria_wlcode/Fox_Sims/'
-zbiaspath  = '/Users/maria/current-work/maria_wlcode/Fox_Sims/maria_z_files/'
+calpath = '/data/des61.a/data/mariaeli/y1_wlfitting/better_simulated_profiles/'
+y1datapath = '/data/des61.a/data/mariaeli/y1_wlfitting/DES_mu_star_wlmass/results_v2/'
+samplepath = '/data/des61.a/data/mariaeli/y1_wlfitting/DES_mu_star_samples/'
+bfpath     = '/data/des61.a/data/mariaeli/y1_wlfitting/'
+zbiaspath  = '/data/des61.a/data/mariaeli/y1_wlfitting/maria_z_files/'
 
-def get_args(dsfile, dscovfile, samplefile, bfile, bcovfile, binrun, zmubins, runtype):
+#on Mac
+#calpath    = '/Users/maria/current-work/maria_wlcode/Fox_Sims/data_files/'
+#y1datapath = '/Users/maria/current-work/lambda_star/connor-data-final/runs_Feb19/DES_mu_star_wlmass/results_v2/'
+#samplepath = '/Users/maria/current-work/lambda_star/connor-data-final/runs_Feb19/DES_mu_star_samples/'
+#bfpath     = '/Users/maria/current-work/maria_wlcode/Fox_Sims/'
+#zbiaspath  = '/Users/maria/current-work/maria_wlcode/Fox_Sims/maria_z_files/'
+
+def get_args(dsfile, dscovfile, samplefile, bfile, bcovfile, binrun, zmubins, runtype, svdir):
     """
     Pack as a dictionary the :math:`\Delta\Sigma` data and other relevant quantities
     for the computation of the theoretical :math:`\Delta\Sigma_{NFW}`.
@@ -79,18 +86,23 @@ def get_args(dsfile, dscovfile, samplefile, bfile, bcovfile, binrun, zmubins, ru
         R, ds, icov, cov, fitmask = get_data_and_icov(dsfile, dscovfile, runtype)
         Rb, Bp1, iBcov, Bcov = get_boost_data_and_cov(bfile, bcovfile, runtype)
 
-        results_dir = bfpath + 'fitting_'+ dsfile.split('_')[0] + '_' + zbin + '_'+ mbin +'/'
+        results_dir = bfpath + 'fitting_'+ dsfile.split('_')[0] + '_' + zbin + '_'+ mbin + svdir +'/'
 
-        print '=====>', results_dir
+        #This give error when running MPI
+        #if not os.path.exists(results_dir):
+        #    os.makedirs(results_dir)
 
-        if not os.path.exists(results_dir):
-            os.makedirs(results_dir)
+        #Fix to run in parallel
+        try:
+            os.makedirs(results_dir, 0755)
+        except OSError as e:
+            if e.errno == 17:  # errno.EEXIST
+                os.chmod(results_dir, 0755)
 
         bf_file = results_dir + 'bf_' + dsfile.split('_')[0]+ '_' + zbin + '_'+ mbin +'.txt'
         chainfile = results_dir + 'chain_' + dsfile.split('_')[0] + '_' + zbin + '_'+ mbin +'.txt'
         likesfile = results_dir + 'like_' + dsfile.split('_')[0]  +'_' + zbin + '_'+ mbin #+'.txt'
 
-        print '==== bf_file', bf_file, '\n', chainfile, '\n', likesfile
 
     elif runtype=='cal':
         h=cosmology['h']
@@ -160,11 +172,20 @@ def get_args(dsfile, dscovfile, samplefile, bfile, bcovfile, binrun, zmubins, ru
         Rb, Bp1, iBcov, Bcov = [],[],[],[]
 
         Am_prior, Am_prior_var = [],[]
+        Sigma_crit_inv = []
 
-        results_dir = bfpath + 'fitting_'+ dsfile.split('_')[0] + '_' + zbin + '_'+ mbin +'/'
+        results_dir = bfpath + 'fitting_'+ dsfile.split('_')[0] + '_' + zbin + '_'+ mbin + svdir +'/'
 
-        if not os.path.exists(results_dir):
-            os.makedirs(results_dir)
+        #Do not work in parallel
+        #if not os.path.exists(results_dir):
+        #    os.makedirs(results_dir)
+
+       	#Fix to run in parallel
+        try:
+            os.makedirs(results_dir, 0755)
+        except OSError as e:
+            if e.errno == 17:  # errno.EEXIST
+                os.chmod(results_dir, 0755)
 
         bf_file = results_dir + 'bf_' +   zbin + '_'+ mbin +'.txt'
         chainfile = results_dir + 'chain_'  + zbin + '_'+ mbin #+'.txt'
@@ -329,10 +350,6 @@ def get_data_and_icov(dsfile, dscovfile, runtype):
         cov = cov*((Njk-1.)/(Njk-D-2))  #physical [Msun/pc^2]^2
         icov = np.linalg.inv(cov)       #physical [Msun/pc^2]^2
 
-        #print '----- sqrt (Covariance) -----', '\n', np.sqrt(cov)
-        #dcov = np.sqrt(cov.diagonal())
-        #print '------ sqrt(Diagonal) -----', '\n', dcov
-
 
     return R, ds, icov, cov, fitmask
 
@@ -359,7 +376,7 @@ def get_boost_data_and_cov(Bfile, Bcovfile, runtype):
         Bcov = Bcov[Becut]
         Bcov = Bcov[:,Becut]
 
-        indices = (Rb > 0.2)*(Rb < 999.)
+        indices = (Rb > 0.2)*(Rb<10.0)  #(Rb<2.5) #(Rb < 999.)
         Bp1 = Bp1[indices]
         Rb  = Rb[indices]
         Be  = Be[indices]
@@ -370,6 +387,7 @@ def get_boost_data_and_cov(Bfile, Bcovfile, runtype):
         Bcov = Bcov*((Njk-1.)/(Njk-D-2))
         iBcov = np.linalg.inv(Bcov)
         print "Boost data shapes: ",Rb.shape, Bp1.shape, Be.shape, Bcov.shape
+        print 'Boost Factor data after radial cut for the mcmc:\n', np.c_[Rb, Bp1]
     return Rb, Bp1, iBcov, Bcov
 
 

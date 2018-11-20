@@ -94,9 +94,9 @@ def DStheo(theta, args):
         ds = ds/1.e12  # in units of h Msun/pc^2 physical (because h=1, otherwise is M_sun/pc^2)
         sigma = sigma/1.e12
 
-        full_Sigma = (1-pcc)*sigma + pcc*Smisc
+        full_Sigma = pcc*sigma + (1-pcc)*Smisc
 
-        full_model = pcc*(np.array(ds))+(1-pcc)*DSmisc
+        full_model = pcc*ds + (1-pcc)*DSmisc
 
         full_model *= Am #shear+photo-z bias correction
 
@@ -106,7 +106,7 @@ def DStheo(theta, args):
 
         full_model /= (1-full_Sigma*sigma_crit_inv) #Reduced shear
 
-    return full_model # in physical [M_sun/pc^2]
+        return full_model # in physical [M_sun/pc^2]
 
 
 def get_boost_model(theta, args):

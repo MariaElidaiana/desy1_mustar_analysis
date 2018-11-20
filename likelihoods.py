@@ -27,7 +27,6 @@ def lnlikelihood(theta, args):
     lnlikeDS = -0.5*np.dot(DSdiff, np.dot(iDScov, DSdiff))
     #lnlikeDS = -0.5*np.sum((DSdiff )**2/(DSerr**2))
 
-    #print DSobs, DSmod
 
     if runtype=='cal':
         return lnlikeDS
@@ -39,7 +38,6 @@ def lnlikelihood(theta, args):
         LLboost = -0.5*np.dot(Xb, np.dot(iBcov, Xb))
         return lnlikeDS + LLboost
 
-
 #prior
 def lnprior(theta, args):
     runtype = args['runtype']
@@ -49,35 +47,19 @@ def lnprior(theta, args):
     if runtype=='data':
         m200, pcc, Am, B0, Rs = theta
 
-        #if (m200<1e12)|(m200>1e15): #m200 is M200c [Msun] physical
-        #    lnprior_m200 = -np.inf
-        #else:
-        #    lnprior_m200 = 0.0
-
-        #if (pcc<0)|(pcc>1):
-        #    lnprior_pcc = -np.inf
-        #else:
-        #    lnprior_pcc = 0.0
-        #if Rs <=0. or B0 < 0. or Rs > 50. or B0 > 50. or Am <= 0.0: return -np.inf
-
         #Tom+Maria priors
-        if m200<1e12 or m200>1e15 or Am <= 0.0 or pcc<0.0 or pcc>1.0:
-            lnprior_m200 = -np.inf
-            lnprior_pcc = -np.inf
-        else:
-            lnprior_m200 = 0.0
-            lnprior_pcc = 0.0
+        if m200<1e11 or m200>1e18 or Am <= 0.0 or pcc<0.0 or pcc>1.0: return -np.inf
 
-        if Rs <=0.0 or B0 < 0.0 or Rs > 10.: return -np.inf
+        if Rs<=0.0 or B0<0.0 or Rs>4.0 or B0>1.0: return -np.inf
 
-        lnprior_A = (Am_prior - Am)**2/Am_prior_var #Y1 -0.5*(LPfmis + LPtau + LPA)
+        lnprior_A = (Am_prior - Am)**2/Am_prior_var
 
-        return -0.5*(lnprior_m200 + lnprior_pcc + lnprior_A)
+        return -0.5*(lnprior_A)
 
 
     if runtype=='cal':
         m200 = theta
-        if (m200<1e12)|(m200>1e15): #m200 is M200c [Msun] physical
+        if m200<1e11 or m200>1e18:  #m200 is M200c [Msun] physical
             lnprior_m200 = -np.inf
         else:
             lnprior_m200 = 0.0
