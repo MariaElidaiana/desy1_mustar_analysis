@@ -14,6 +14,7 @@ from likelihoods import *
 import scipy.optimize as op
 import emcee
 import pickle
+import multiprocessing
 
 def do_model(theta, args):
     DSnfw = DStheo(theta, args)
@@ -25,7 +26,8 @@ def find_best_fit(args, blind):
     runtype = args['runtype']
     bestfitpath = args['bf_file']
     mean_mustar = args['mean_mustar']
-    guess = get_model_start(runtype, mean_mustar, h)
+    runconfig = args['runconfig']
+    guess = get_model_start(runtype, mean_mustar, h, runconfig)
     nll = lambda *args: -lnposterior(*args)
     print "Running best fit"
     result = op.minimize(nll, guess, args=(args,), tol=1e-2)
@@ -39,7 +41,6 @@ def find_best_fit(args, blind):
         print result
         np.savetxt(bestfitpath, result['x'])
     return
-
 
 def make_blind(M, M_min, M_max, outpath):
 
@@ -78,34 +79,30 @@ def make_blind_chain(chain, chainpath, blindpath):
     np.save(blind_chainpath, samples)
 
 def do_mcmc(args, blind):
-    nwalkers, nsteps = 32, 10000 
+    nwalkers, nsteps = 32, 10000
     runtype = args['runtype']
     bfpath = args['bf_file']
     chainpath = args['chainfile']
     likespath = args['likesfile']
+    runconfig = args['runconfig']
     print '-- Chainpath:', chainpath
     if blind:
         bfmodel = pickle.load(open(bfpath.replace('.txt', '.p'), "rb"))
     else:
         bfmodel = np.loadtxt(bfpath) #Has everything
-    start = get_mcmc_start(bfmodel, runtype)
+    start = get_mcmc_start(bfmodel, runtype, runconfig)
     ndim = len(start) #number of free parameters
-    print 'ndim', ndim
-    #pos = [start + 1e-3*np.random.randn(ndim) for k in range(nwalkers)]
-    pos = [ np.array(start) * 1.e-1 * abs(np.random.randn((ndim))) for k in range(nwalkers)] # work around
-    '''
-    h0 = 1e-1
-    np.random.seed(0)
-    pos=[]
-    zeros = np.zeros((ndim, nwalkers))
-    for k in range(len(start)):
-        zeros[k,:] = start[k] + h0 * np.random.normal(loc=0.0, scale=np.abs(start[k]), size=nwalkers)
+    print 'ndim=', ndim
+    if np.shape(start)==(1,1):
+        start=np.reshape(start,(1,))
+ 
+    pos = [ np.array(start) * 1.e-1 * abs(np.random.randn((ndim))) for k in range(nwalkers)] # workaround
 
-    for i in range(nwalkers):
-        pos.append(np.array([zeros[0,i]]))
-    '''
+    nproc = multiprocessing.cpu_count()
+    threads = int(nproc/2.)
+    print "Machine has nproc=", nproc, ". MCMC Will use ", threads, "threads!"
 
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnposterior, args=(args,), a=2, threads=28)
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, lnposterior, args=(args,), a=6, threads=threads)
     if blind:
         print "Starting MCMC, saving to %s"%chainpath.replace('.txt', '.npy').replace('chain_', 'blinded_chain_')
     else:
@@ -117,14 +114,13 @@ def do_mcmc(args, blind):
     if blind:
         print 'Saving the blinded chains...'
         chain = sampler.chain
-        #blindpath = '/Users/maria/current-work/maria_wlcode/Fox_Sims/ProfileFitting/blinding_file.p'
         blindpath = '/data/des61.a/data/mariaeli/y1_wlfitting/ProfileFitting/blinding_file.p'
         make_blind_chain(chain, chainpath, blindpath)
     else:
         print 'Saving chains...'
         np.save(chainpath, sampler.chain)
 
-    print 'Like path = ', likespath#.replace('.txt','')
+    print 'Like path = ', likespath
     np.save(likespath, sampler.lnprobability)
     sampler.reset()
     return
@@ -132,10 +128,15 @@ def do_mcmc(args, blind):
 
 if __name__ == "__main__":
 
-    runtype = sys.argv[1]
-    binrun  = int(sys.argv[2])
-    svdir= '_final' #'_v2'
-    blind = True
+    runtype = sys.argv[1]         #can be 'cal' or 'data'
+    binrun  = int(sys.argv[2])    #number 0-15 for 'cal', 0-11 for 'data'
+    runconfig = sys.argv[3]       #can be 'Full', 'OnlyM', 'FixAm'
+    svdir = '_'+runconfig         #the suffix for the chains savedir 
+    blind = True                  #True for data
+    cmodel='diemer18'             #concentration model
+    factor2h = True               #True=2halo x h; False=2halo
+    allrangeR = False             #True: r>0.2; False: 0.2<r<2.5 [in physical Mpc] 
+    twohalo = False               #twohalo=True to compute the VERY SLOW 2-halo term with colossus
 
     dsfiles   = []
     dscovfiles  = []
@@ -168,12 +169,12 @@ if __name__ == "__main__":
 
     elif runtype=='cal':
 
-        zs = [0.0, 0.25, 0.5, 1.0] # redshifts of snapshots
+        zs = [0.0, 0.25, 0.5, 1.0] #redshifts of snapshots
         snap = [3,2,1,0]
 
         for zi in range(4):
             z = zs[zi]
-            sn = snap[zi] # snapshot number
+            sn = snap[zi] #snapshot number
             for lj in range(4):
                 dsfiles.append("deltasigma_z%d_m%d.txt"%(sn,lj))
                 dscovfiles.append(None)
@@ -183,19 +184,20 @@ if __name__ == "__main__":
 
     #Get args and quantities
     start = time.time()
-    args = get_args(dsfiles[binrun], dscovfiles[binrun], sampfiles[binrun], bfiles[binrun], bcovfiles[binrun], binrun, zmubins[binrun], runtype, svdir)
+    if runtype=='data':
+        args = get_args(dsfiles[binrun], dscovfiles[binrun], sampfiles[binrun], bfiles[binrun], bcovfiles[binrun], binrun, zmubins[binrun], runtype, svdir, cmodel, factor2h, allrangeR,twohalo,runconfig)
+    if runtype=='cal':
+        args = get_args(dsfiles[binrun], dscovfiles[binrun], sampfiles[binrun], None, None, binrun, None, runtype, svdir, cmodel, factor2h, allrangeR, twohalo,runconfig)
     end = time.time()
     print 'Time to run get_args:', end - start, 'seconds'
 
-
     #Check the model run
-    #theta=1e14
+    #theta=(1.e14)
     #theta = (1e14, 0.8, 1.02, 0.33, 0.45)
     #start = time.time()
     #ds = do_model(theta, args)
     #end = time.time()
     #print 'Time to run do_model:', end - start, 'seconds'
-
 
     #Do the minimizer step
     start = time.time()
@@ -203,9 +205,9 @@ if __name__ == "__main__":
     end = time.time()
     print 'Time to run find_best_fit:', end - start, 'seconds'
 
-
     #Do the mcmc
     start = time.time()
     do_mcmc(args, blind)
     end = time.time()
     print 'Time to run do_mcmc:', end - start, 'seconds'
+    
