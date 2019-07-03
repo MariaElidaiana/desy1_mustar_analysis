@@ -60,16 +60,20 @@ def DStheo(theta, args):
             m200, pcc, B0, Rs = theta 
     elif runtype == 'cal':
         m200 = theta[0]
+    elif runtype == 'calsys':
+        if runconfig=='Full':
+            m200, pcc, Am, B0, Rs = theta #M200c [Msun]
 
-    h       = args['h']
-    R       = args['R']     #in physical [Mpc]
-    cosmo   = args['cosmo'] #astropy cosmology object
-    z_mean  = args['z_mean']
-    sigma_crit_inv = args['Sigma_crit_inv']
-    cmodel  = args['cmodel']    #diemer18
-    factor2h = args['factor2h'] #boolean, if True multiply 2-halo term by h 
+    h         = args['h']
+    z_mean    = args['z_mean']
+    R         = args['R']         #in physical [Mpc]
+    cosmo     = args['cosmo']     #astropy cosmology object
+    cmodel    = args['cmodel']    #diemer18 (obs.: lastest version of Colossus renamed to diemer19)
+    twohalo   = args['twohalo']
+    factor2h  = args['factor2h']  #boolean, if True multiply 2-halo term by h
     cosmodict = args['cosmodict']
-    twohalo = args['twohalo']
+    omega_m   = cosmodict['om']
+    sigma_crit_inv = args['Sigma_crit_inv']
 
     #Setting up the cosmology for Colossus
     params = {'flat':True,'H0':cosmodict['h']*100.,'Om0':cosmodict['om'],'Ob0':cosmodict['ob'],'sigma8':cosmodict['sigma8'],'ns':cosmodict['ns']}
@@ -82,15 +86,13 @@ def DStheo(theta, args):
                     
     #For DeltaSigma calculation, data and sim, the radius has to be in physical [Mpc]
     if runtype=='cal':
-        #ds  = nfw.delta_sigma(R).value #DeltaSigma is in units of physical [M_sun/Mpc^2]
         ds  = (nfw.delta_sigma(R).value)/1.e12   #DeltaSigma is in units of physical [M_sun/Mpc^2]
-
+        #This two-halo part was not used in the analysis, the compuation is too slow
         if twohalo:
             #Adding the 2-halo term
             b = bias.haloBias(m200*h, z_mean, '200c', model='tinker10') #mass_in is [Msun/h] 
-            #outer_term_mean = profile_outer.OuterTermMeanDensity(z = z_mean)
             outer_term_xi = profile_outer.OuterTermCorrelationFunction(z = z_mean, bias = b)
-            p_nfw = profile_nfw.NFWProfile(M = m200*h, c = c200c, z = z_mean, mdef = '200c', outer_terms = [outer_term_xi]) #mass_in is [Msun/h] #outer_term_mean
+            p_nfw = profile_nfw.NFWProfile(M = m200*h, c = c200c, z = z_mean, mdef = '200c', outer_terms = [outer_term_xi]) #mass_in is [Msun/h]
 
             #Radius in physical kpc/h
             two_nfw0 = p_nfw.deltaSigmaOuter((R*1e3)*h, interpolate = True, interpolate_surface_density = False, min_r_interpolate=1.e-6*h, max_r_integrate=2.e5*h, max_r_interpolate=2.e5*h)
@@ -101,12 +103,12 @@ def DStheo(theta, args):
             else:
                 two_nfw = (two_nfw1*h)   #in physical [Msun/pc^2] #This should be the right one
  
-            ds_model = ds+two_nfw        #NFW + 2-halo in physical [Msun/pc^2] if factor2h=False
+            ds_model = ds+two_nfw #NFW + 2-halo in physical [Msun/pc^2] if factor2h=False    
         else:
             ds_model = ds
         return ds_model #physical [M_sun/pc^2]
 
-    if runtype=='data':
+    if runtype=='data' or runtype=='calsys':
 
         ds    = (nfw.delta_sigma(R).value)/1.e12   #units of h Msun/pc^2 physical (but h=1, so actually is M_sun/pc^2)
         sigma = (nfw.sigma(R).value)/1.e12
@@ -114,27 +116,32 @@ def DStheo(theta, args):
         # Computing miscetering correction from data
         m200p = m200
         z     = np.array([z_mean])
-        cluster = ClusterEnsemble(z,cosmology=FlatLambdaCDM(H0=100, Om0=0.3), cm='Diemer18', cmval=c200c) #, cm='Duffy')
+        
+        if runtype=='data':
+            cluster = ClusterEnsemble(z,cosmology=FlatLambdaCDM(H0=100, Om0=0.3), cm='Diemer18', cmval=c200c)
+            misc_off = 0.1326    #here in [Mpc], since h=1
 
+        elif runtype=='calsys':
+            cluster = ClusterEnsemble(z,cosmology=FlatLambdaCDM(H0=h*100, Om0=omega_m), cm='Diemer18', cmval=c200c)
+            misc_off = 0.1326/h  #input needs to be in units of [Mpc]     
+ 
         if np.shape(m200p)==(1,1):
             m200p = np.reshape(m200p, (1,))
- 
         try:
             cluster.m200 = m200p #M200c [Msun]
         except TypeError:
             cluster.m200 = np.array([m200p])
          
-        rbins = R          # in physical [Mpc]
-        misc_off = 0.4     # here in [Mpc], since h=1 #miscentering offsets in 0.4 Mpc/h according to Simet 2016 paper
+        rbins = R # in physical [Mpc]
          
         offsets = np.ones(cluster.z.shape[0])*misc_off
         cluster.calc_nfw(rbins, offsets=offsets)             #NFW with offset
 
-        dsigma_offset = cluster.deltasigma_nfw.mean(axis =0) #physical [M_sun/pc^2], but h=1, so [h M_sun/pc**2]?
-        DSmisc = dsigma_offset.value                         #physical [hMsun/pc^2]?
+        dsigma_offset = cluster.deltasigma_nfw.mean(axis =0) #physical [M_sun/pc^2], but if h=1 is [h M_sun/pc**2]
+        DSmisc = dsigma_offset.value                         #physical [Msun/pc^2]
 
-        sigma_offset = cluster.sigma_nfw.mean(axis =0) #physical [M_sun/pc**2], but h=1, so [h M_sun/pc**2]?
-        Smisc = sigma_offset.value                     #physical [hMsun/pc^2]?
+        sigma_offset = cluster.sigma_nfw.mean(axis =0) #physical [M_sun/pc**2], but if h=1 is [h M_sun/pc**2]
+        Smisc = sigma_offset.value                     #physical [Msun/pc^2]
 
         if runconfig=='OnlyM':
             pcc=0.75
@@ -145,7 +152,7 @@ def DStheo(theta, args):
         full_Sigma = pcc*sigma + (1-pcc)*Smisc
 
         full_model = pcc*ds + (1-pcc)*DSmisc
-        
+
         if runconfig=='Full':
             full_model *= Am #shear+photo-z bias correction
         elif runconfig=='OnlyM' or 'FixAm':
@@ -153,10 +160,11 @@ def DStheo(theta, args):
 
         #Note: R (rbins) and Rs are in physical [Mpc], need to be comoving [Mpc/h]
         boost_model = ct.boostfactors.boost_nfw_at_R(rbins*h*(1+z_mean), B0, Rs*h*(1+z_mean))
-        full_model /= boost_model
+
+        full_model /= boost_model #boost-factor
 
         full_model /= (1-full_Sigma*sigma_crit_inv) #Reduced shear
-        #print 'fullmodel=', full_model
+
         return full_model # in physical [M_sun/pc^2]
 
 
@@ -165,15 +173,15 @@ def get_boost_model(theta, args):
     if runconfig=='Full': 
         m200, pcc, Am, B0, Rs = theta
     elif runconfig=='OnlyM':
-        m200 = theta#[0]
+        m200 = theta
         B0=0.50
         Rs=2.00
     if runconfig=='FixAm':
         m200, pcc, B0, Rs = theta 
 
-    h = args['h']
-    z_mean  = args['z_mean']
-    Rb       = args['Rb'] #in physical [Mpc]
+    h      = args['h']
+    z_mean = args['z_mean']
+    Rb     = args['Rb']   #in physical [Mpc]
     Rb *= h*(1+z_mean)    #Rb and Rs are in physical [Mpc], need to be in comoving [Mpc/h]
     Rs *= h*(1+z_mean)
     return ct.boostfactors.boost_nfw_at_R(Rb, B0, Rs)
