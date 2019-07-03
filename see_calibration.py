@@ -5,14 +5,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.ticker import MaxNLocator
+
 plt.rc("text", usetex=True, fontsize=24)
 plt.rc("errorbar", capsize=3)
 
 def calc_cal(mu, z):
     #C0, a , b   = [ 0.95455359, 0.03090107, -0.18034199]  #diemer18
-    #dC0, da, db = [0.02349054, 0.04583875, 0.06991657]    #diemer18
+    #dC0, da, db = [0.02349054, 0.04583875, 0.06991657]
     C0, a , b   = [0.97767676,  0.0424727, -0.23112437]   #diemer18 + sys
-    dC0, da, db = [0.02925375, 0.05641144, 0.09145634]    #diemer18 + sys
+    dC0, da, db = [0.02925375, 0.05641144, 0.09145634]    
 
     Cbf = C0 * (mu/5.16e12)**a * ((1+z)/1.5)**b
     
